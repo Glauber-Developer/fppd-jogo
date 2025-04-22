@@ -20,6 +20,8 @@ func main() {
 		panic(err)
 	}
 
+
+    go iniciarMoedasMoveis(&jogo) // Inicia a movimentação das moedas
 	// Desenha o estado inicial do jogo
 	interfaceDesenharJogo(&jogo)
 

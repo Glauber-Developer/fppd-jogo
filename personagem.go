@@ -16,9 +16,15 @@ func personagemMover(tecla rune, jogo *Jogo) {
 	nx, ny := jogo.PosX+dx, jogo.PosY+dy
 	// Verifica se o movimento é permitido e realiza a movimentação
 	if jogoPodeMoverPara(jogo, nx, ny) {
+        // Verifica se há uma moeda na nova posição
+        if jogo.Mapa[ny][nx].coletavel {
+            jogo.StatusMsg = "Você coletou uma moeda! +1 ponto"
+        }
 		jogoMoverElemento(jogo, jogo.PosX, jogo.PosY, dx, dy)
 		jogo.PosX, jogo.PosY = nx, ny
-	}
+	} else {
+        jogo.StatusMsg = "Movimento inválido!"
+    }
 }
 
 // Define o que ocorre quando o jogador pressiona a tecla de interação
