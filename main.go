@@ -1,7 +1,12 @@
 // main.go - Loop principal do jogo
 package main
 
-import "os"
+import (
+    "os"
+    "sync"
+)
+
+var interfaceLock sync.Mutex
 
 func main() {
 	// Inicializa a interface (termbox)
@@ -21,16 +26,31 @@ func main() {
 	}
 
 
-    go iniciarMoedasMoveis(&jogo) // Inicia a movimentação das moedas
+    // Inicia os elementos autônomos concorrentes
+    go iniciarMoedasMoveis(&jogo)
+    go iniciarFantasmas(&jogo)
+    go iniciarTeleportes(&jogo)
+    go iniciarSistemaBombas(&jogo)
 	// Desenha o estado inicial do jogo
 	interfaceDesenharJogo(&jogo)
 
-	// Loop principal de entrada
-	for {
-		evento := interfaceLerEventoTeclado()
-		if continuar := personagemExecutarAcao(evento, &jogo); !continuar {
-			break
-		}
-		interfaceDesenharJogo(&jogo)
-	}
+	 // Loop principal de entrada
+	 for {
+        evento := interfaceLerEventoTeclado()
+        if continuar := personagemExecutarAcao(evento, &jogo); !continuar {
+            break
+        }
+        
+        // Verifica interações com elementos concorrentes
+        verificarTeleporte(&jogo)
+        verificarBomba(&jogo)
+        
+        if verificarContatoFantasma(&jogo) {
+            jogo.StatusMsg = "Um fantasma te encontrou! Cuidado!"
+        }
+        
+        interfaceLock.Lock()
+        interfaceDesenharJogo(&jogo)
+        interfaceLock.Unlock()
+    }
 }
