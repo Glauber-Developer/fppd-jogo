@@ -143,6 +143,7 @@ func controlarFantasma(jogo *Jogo, x, y int) {
 					// Atualiza a posição
 					posX, posY = novoX, novoY
 				}
+				interfaceDesenharJogo(jogo) // Atualiza a interface gráfica
 				mapaLock.Unlock()
 			}
 		}
