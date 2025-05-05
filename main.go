@@ -2,11 +2,23 @@
 package main
 
 import (
-    "os"
-    "sync"
+	"os"
+	"sync"
 )
 
-var interfaceLock sync.Mutex
+var (
+	interfaceLock sync.Mutex   // já existia
+	mapLock       sync.RWMutex // novo – leitura/edição do mapa
+)
+
+// Desenha o estado do jogo sem data‑races
+func safeRedraw(j *Jogo) {
+	mapLock.RLock()          // garante consistência da leitura
+	interfaceLock.Lock()     // garante exclusividade no termbox
+	interfaceDesenharJogo(j) // faz o flush
+	interfaceLock.Unlock()
+	mapLock.RUnlock()
+}
 
 func main() {
 	// Inicializa a interface (termbox)
@@ -25,32 +37,29 @@ func main() {
 		panic(err)
 	}
 
-
-    // Inicia os elementos autônomos concorrentes
-    go iniciarMoedasMoveis(&jogo)
-    go iniciarFantasmas(&jogo)
-    go iniciarTeleportes(&jogo)
-    go iniciarSistemaBombas(&jogo)
+	// Inicia os elementos autônomos concorrentes
+	go iniciarMoedasMoveis(&jogo)
+	go iniciarFantasmas(&jogo)
+	go iniciarTeleportes(&jogo)
+	go iniciarSistemaBombas(&jogo)
 	// Desenha o estado inicial do jogo
 	interfaceDesenharJogo(&jogo)
 
-	 // Loop principal de entrada
-	 for {
-        evento := interfaceLerEventoTeclado()
-        if continuar := personagemExecutarAcao(evento, &jogo); !continuar {
-            break
-        }
-        
-        // Verifica interações com elementos concorrentes
-        verificarTeleporte(&jogo)
-        verificarBomba(&jogo)
-        
-        if verificarContatoFantasma(&jogo) {
-            jogo.StatusMsg = "Um fantasma te encontrou! Cuidado!"
-        }
-        
-        interfaceLock.Lock()
-        interfaceDesenharJogo(&jogo)
-        interfaceLock.Unlock()
-    }
+	// Loop principal de entrada
+	for {
+		evento := interfaceLerEventoTeclado()
+		if continuar := personagemExecutarAcao(evento, &jogo); !continuar {
+			break
+		}
+
+		// Verifica interações com elementos concorrentes
+		verificarTeleporte(&jogo)
+		verificarBomba(&jogo)
+
+		if verificarContatoFantasma(&jogo) {
+			jogo.StatusMsg = "Um fantasma te encontrou! Cuidado!"
+		}
+
+		safeRedraw(&jogo)
+	}
 }

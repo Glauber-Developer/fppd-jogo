@@ -37,6 +37,9 @@ func iniciarFantasmas(jogo *Jogo) {
 				// Inicia uma goroutine para cada fantasma
 				go controlarFantasma(jogo, x, y)
 			}
+
+			mapLock.Unlock()
+			safeRedraw(jogo)
 		}
 	}
 

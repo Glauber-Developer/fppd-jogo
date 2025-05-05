@@ -26,7 +26,8 @@ func iniciarMoedasMoveis(jogo *Jogo) {
 
 // Move uma moeda pelo mapa
 func moverMoeda(jogo *Jogo, posX, posY int) {
-	// Continua movendo até a moeda ser coletada
+
+	mapLock.Lock() // Continua movendo até a moeda ser coletada
 	for {
 		// Espera um tempo antes de mover
 		time.Sleep(1 * time.Second)
@@ -56,8 +57,9 @@ func moverMoeda(jogo *Jogo, posX, posY int) {
 				jogo.Mapa[novoY][novoX] = Moeda
 
 				// Atualiza a posição
-				posX, posY = novoX, novoY
+				mapLock.Unlock()
 			}
+			safeRedraw(jogo)
 		}
 
 		// Verificação para sair do loop se a moeda foi coletada
