@@ -1,65 +1,56 @@
-// main.go - Loop principal do jogo
 package main
 
 import (
 	"os"
 	"sync"
+	"time"
 )
 
-var (
-	interfaceLock sync.Mutex   // já existia
-	mapLock       sync.RWMutex // novo – leitura/edição do mapa
-)
-
-// Desenha o estado do jogo sem data‑races
-func safeRedraw(j *Jogo) {
-	mapLock.RLock()          // garante consistência da leitura
-	interfaceLock.Lock()     // garante exclusividade no termbox
-	interfaceDesenharJogo(j) // faz o flush
-	interfaceLock.Unlock()
-	mapLock.RUnlock()
-}
+var interfaceLock sync.Mutex
 
 func main() {
-	// Inicializa a interface (termbox)
 	interfaceIniciar()
 	defer interfaceFinalizar()
 
-	// Usa "mapa.txt" como arquivo padrão ou lê o primeiro argumento
 	mapaFile := "mapa.txt"
 	if len(os.Args) > 1 {
 		mapaFile = os.Args[1]
 	}
 
-	// Inicializa o jogo
 	jogo := jogoNovo()
 	if err := jogoCarregarMapa(mapaFile, &jogo); err != nil {
 		panic(err)
 	}
 
-	// Inicia os elementos autônomos concorrentes
 	go iniciarMoedasMoveis(&jogo)
 	go iniciarFantasmas(&jogo)
 	go iniciarTeleportes(&jogo)
 	go iniciarSistemaBombas(&jogo)
-	// Desenha o estado inicial do jogo
-	interfaceDesenharJogo(&jogo)
 
-	// Loop principal de entrada
+	// Loop de renderização: 10 quadros/seg.
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for range ticker.C {
+			interfaceLock.Lock()
+			interfaceDesenharJogo(&jogo)
+			interfaceLock.Unlock()
+		}
+	}()
+
+	// Entrada do jogador
 	for {
-		evento := interfaceLerEventoTeclado()
-		if continuar := personagemExecutarAcao(evento, &jogo); !continuar {
+		ev := interfaceLerEventoTeclado()
+		if continuar := personagemExecutarAcao(ev, &jogo); !continuar {
 			break
 		}
 
-		// Verifica interações com elementos concorrentes
 		verificarTeleporte(&jogo)
 		verificarBomba(&jogo)
-
 		if verificarContatoFantasma(&jogo) {
+			jogoMutex.Lock()
 			jogo.StatusMsg = "Um fantasma te encontrou! Cuidado!"
+			jogoMutex.Unlock()
 		}
-
-		safeRedraw(&jogo)
 	}
 }

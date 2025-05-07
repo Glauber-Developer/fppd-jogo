@@ -1,38 +1,45 @@
-// personagem.go - Funções para movimentação e ações do personagem
+// personagem.go
 package main
 
 import "fmt"
 
-// Atualiza a posição do personagem com base na tecla pressionada (WASD)
 func personagemMover(tecla rune, jogo *Jogo) {
 	dx, dy := 0, 0
 	switch tecla {
-	case 'w': dy = -1 // Move para cima
-	case 'a': dx = -1 // Move para a esquerda
-	case 's': dy = 1  // Move para baixo
-	case 'd': dx = 1  // Move para a direita
+	case 'w':
+		dy = -1
+	case 'a':
+		dx = -1
+	case 's':
+		dy = 1
+	case 'd':
+		dx = 1
 	}
 
 	nx, ny := jogo.PosX+dx, jogo.PosY+dy
-	// Verifica se o movimento é permitido e realiza a movimentação
 	if jogoPodeMoverPara(jogo, nx, ny) {
-        // Verifica se há uma moeda na nova posição
-        if jogo.Mapa[ny][nx].coletavel {
-            jogo.StatusMsg = "Você coletou uma moeda! +1 ponto"
-        }
+		jogoMutex.Lock()
+		if jogo.Mapa[ny][nx].coletavel {
+			jogo.StatusMsg = "Você coletou uma moeda! +1 ponto"
+		}
+		jogoMutex.Unlock()
+
 		jogoMoverElemento(jogo, jogo.PosX, jogo.PosY, dx, dy)
+
+		jogoMutex.Lock()
 		jogo.PosX, jogo.PosY = nx, ny
+		jogoMutex.Unlock()
 	} else {
-        jogo.StatusMsg = "Movimento inválido!"
-    }
+		jogoMutex.Lock()
+		jogo.StatusMsg = "Movimento inválido!"
+		jogoMutex.Unlock()
+	}
 }
 
-// Define o que ocorre quando o jogador pressiona a tecla de interação
-// Neste exemplo, apenas exibe uma mensagem de status
-// Você pode expandir essa função para incluir lógica de interação com objetos
 func personagemInteragir(jogo *Jogo) {
-	// Atualmente apenas exibe uma mensagem de status
+	jogoMutex.Lock()
 	jogo.StatusMsg = fmt.Sprintf("Interagindo em (%d, %d)", jogo.PosX, jogo.PosY)
+	jogoMutex.Unlock()
 }
 
 // Processa o evento do teclado e executa a ação correspondente

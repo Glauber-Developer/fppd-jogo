@@ -3,82 +3,56 @@ package main
 import (
 	"math"
 	"math/rand"
-	"sync"
 	"time"
 )
 
-// Elemento 1 autonomo concorrente
 var (
-	Fantasma = Elemento{'ゴ', CorVermelho, CorPadrao, false, false}
-
-	// Mutex para proteger acesso ao mapa
-	mapaLock sync.Mutex
-
-	// Canal para notificar os fantasmas da posição do jogador
-	jogadorPosicao = make(chan struct{ PosX, PosY int }, 1)
-
-	// Canal para controlar os fantasmas (parar/iniciar)
+	Fantasma          = Elemento{'ゴ', CorVermelho, CorPadrao, false, false}
+	jogadorPosicao    = make(chan struct{ PosX, PosY int }, 1)
 	controleFantasmas = make(chan string)
 )
 
-// Inicia os fantasmas no mapa
 func iniciarFantasmas(jogo *Jogo) {
 	rand.Seed(time.Now().UnixNano())
 
-	// Encontra posições iniciais para os fantasmas
-	for y := 0; y < len(jogo.Mapa); y++ {
-		for x := 0; x < len(jogo.Mapa[y]); x++ {
-			// Coloca fantasmas em posições vazias com 1% de probabilidade
+	for y := range jogo.Mapa {
+		for x := range jogo.Mapa[y] {
 			if jogo.Mapa[y][x] == Vazio && rand.Float32() < 0.01 {
-				mapaLock.Lock()
+				jogoMutex.Lock()
 				jogo.Mapa[y][x] = Fantasma
-				mapaLock.Unlock()
-
-				// Inicia uma goroutine para cada fantasma
+				jogoMutex.Unlock()
 				go controlarFantasma(jogo, x, y)
 			}
-
-			mapLock.Unlock()
-			safeRedraw(jogo)
 		}
 	}
-
-	// Goroutine para monitorar a posição do jogador e notificar os fantasmas
 	go monitorarJogador(jogo)
 }
 
-// Monitora a posição do jogador e notifica os fantasmas
 func monitorarJogador(jogo *Jogo) {
-	ultimoX, ultimoY := jogo.PosX, jogo.PosY
-
+	ux, uy := jogo.PosX, jogo.PosY
 	for {
-		// Verifica se a posição do jogador mudou
-		if jogo.PosX != ultimoX || jogo.PosY != ultimoY {
-			ultimoX, ultimoY = jogo.PosX, jogo.PosY
+		jogoMutex.RLock()
+		px, py := jogo.PosX, jogo.PosY
+		jogoMutex.RUnlock()
 
-			// Atualiza o canal com a nova posição
+		if px != ux || py != uy {
+			ux, uy = px, py
 			select {
-			case jogadorPosicao <- struct{ PosX, PosY int }{jogo.PosX, jogo.PosY}:
-				// Canal atualizado
+			case jogadorPosicao <- struct{ PosX, PosY int }{px, py}:
 			default:
-				// Canal cheio, remove o valor antigo
 				<-jogadorPosicao
-				jogadorPosicao <- struct{ PosX, PosY int }{jogo.PosX, jogo.PosY}
+				jogadorPosicao <- struct{ PosX, PosY int }{px, py}
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
 }
 
-// Controla o comportamento de um fantasma
 func controlarFantasma(jogo *Jogo, x, y int) {
 	posX, posY := x, y
-
-	// Distância máxima para perseguir o jogador
 	const raioDeteccao = 8
-	modo := "patrulha" // modos: "patrulha" ou "perseguindo"
+	modo := "patrulha"
 
-	//Comunicação com timeout
 	for {
 		select {
 		case cmd := <-controleFantasmas:
@@ -86,85 +60,60 @@ func controlarFantasma(jogo *Jogo, x, y int) {
 				return
 			}
 		case pos := <-jogadorPosicao:
-			// Calcula a distância até o jogador
-			dist := math.Sqrt(float64((posX-pos.PosX)*(posX-pos.PosX) + (posY-pos.PosY)*(posY-pos.PosY)))
+			dist := math.Hypot(float64(posX-pos.PosX), float64(posY-pos.PosY))
 			if dist <= raioDeteccao {
 				modo = "perseguindo"
 			} else {
 				modo = "patrulha"
 			}
 		case <-time.After(800 * time.Millisecond):
-			// Movimento do fantasma após timeout
 			var dx, dy int
-
 			if modo == "perseguindo" {
-				// Movimento em direção ao jogador
 				if posX < jogo.PosX {
 					dx = 1
 				} else if posX > jogo.PosX {
 					dx = -1
 				}
-
 				if posY < jogo.PosY {
 					dy = 1
 				} else if posY > jogo.PosY {
 					dy = -1
 				}
-
-				// Se está bloqueado em uma direção, tenta a outra
-				if dx != 0 && dy != 0 {
-					// Escolhe aleatoriamente qual direção tentar primeiro
-					if rand.Intn(2) == 0 {
-						dx = 0
-					} else {
-						dy = 0
-					}
+				if dx != 0 && dy != 0 && rand.Intn(2) == 0 {
+					dx = 0
 				}
 			} else {
-				// Movimento aleatório de patrulha
-				direcoes := []struct{ dx, dy int }{
-					{0, -1}, {0, 1}, {-1, 0}, {1, 0},
-				}
-				idx := rand.Intn(len(direcoes))
-				dx, dy = direcoes[idx].dx, direcoes[idx].dy
+				dirs := []struct{ dx, dy int }{{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
+				v := dirs[rand.Intn(len(dirs))]
+				dx, dy = v.dx, v.dy
 			}
 
-			novoX, novoY := posX+dx, posY+dy
+			nx, ny := posX+dx, posY+dy
+			jogoMutex.Lock()
+			if nx >= 0 && nx < len(jogo.Mapa[0]) &&
+				ny >= 0 && ny < len(jogo.Mapa) &&
+				(jogo.Mapa[ny][nx] == Vazio || jogo.Mapa[ny][nx] == Vegetacao) {
 
-			// Verifica se pode mover para a nova posição
-			if novoX >= 0 && novoX < len(jogo.Mapa[0]) &&
-				novoY >= 0 && novoY < len(jogo.Mapa) {
-
-				mapaLock.Lock()
-				if jogo.Mapa[novoY][novoX] == Vazio || jogo.Mapa[novoY][novoX] == Vegetacao {
-					// Remove da posição atual
-					jogo.Mapa[posY][posX] = Vazio
-
-					// Coloca na nova posição
-					jogo.Mapa[novoY][novoX] = Fantasma
-
-					// Atualiza a posição
-					posX, posY = novoX, novoY
-				}
-				interfaceDesenharJogo(jogo) // Atualiza a interface gráfica
-				mapaLock.Unlock()
+				jogo.Mapa[posY][posX] = Vazio
+				jogo.Mapa[ny][nx] = Fantasma
+				posX, posY = nx, ny
 			}
+			jogoMutex.Unlock()
 		}
 	}
 }
 
-// Verifica se o jogador está em contato com um fantasma
 func verificarContatoFantasma(jogo *Jogo) bool {
-	// Verifica as posições adjacentes
+	jogoMutex.RLock()
+	defer jogoMutex.RUnlock()
+
 	for dy := -1; dy <= 1; dy++ {
 		for dx := -1; dx <= 1; dx++ {
 			nx, ny := jogo.PosX+dx, jogo.PosY+dy
-
-			// Verifica se a posição é válida
-			if ny >= 0 && ny < len(jogo.Mapa) && nx >= 0 && nx < len(jogo.Mapa[ny]) {
-				if jogo.Mapa[ny][nx] == Fantasma {
-					return true
-				}
+			if ny >= 0 && ny < len(jogo.Mapa) &&
+				nx >= 0 && nx < len(jogo.Mapa[ny]) &&
+				jogo.Mapa[ny][nx] == Fantasma {
+				return true
 			}
 		}
 	}
